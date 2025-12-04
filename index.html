@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>溝通板 (靜態版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #F0F4F8; /* 霧灰藍背景 - 鹽系 */
+            overscroll-behavior-y: none; /* 防止下拉重整 */
+        }
+
+        /* 隱藏滾動條但保留功能 */
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        .card-shadow {
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+            transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+        
+        .card-shadow:active {
+            transform: scale(0.96);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        /* 專門處理 Bopomofo 字型 (如果裝置有) */
+        @font-face {
+            font-family: "Bopomofo";
+            src: local("Bopomofo"), local("DFKai-SB"), local("BiauKai");
+        }
+
+        /* 句子區動畫 */
+        @keyframes popIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .pop-in {
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        /* 側邊欄動畫 */
+        .sidebar-enter {
+            transform: translateX(100%);
+        }
+        .sidebar-enter-active {
+            transform: translateX(0);
+            transition: transform 300ms ease-out;
+        }
+        .sidebar-exit {
+            transform: translateX(0);
+        }
+        .sidebar-exit-active {
+            transform: translateX(100%);
+            transition: transform 300ms ease-in;
+        }
+
+        /* 排序模式下的抖動動畫 (選用) */
+        .shaking {
+            animation: shake 0.5s infinite;
+        }
+        @keyframes shake {
+            0% { transform: rotate(0deg); }
+            25% { transform: rotate(1deg); }
+            75% { transform: rotate(-1deg); }
+            100% { transform: rotate(0deg); }
+        }
+        
+        .animate-fade-in {
+            animation: fadeIn 0.2s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // ==========================================
+        // 1. 全域設定與靜態資料庫 (DEFAULT DATA)
+        // ==========================================
+
+        // 簡易注音字典 (擴充樓層相關字)
+        const zhuyinMap = {
+            '我': 'ㄨㄛˇ', '要': 'ㄧㄠˋ', '喝': 'ㄏㄜ', '水': 'ㄕㄨㄟˇ',
+            '上': 'ㄕㄤˋ', '廁': 'ㄘㄜˋ', '所': 'ㄙㄨㄛˇ', '痛': 'ㄊㄨㄥˋ',
+            '開': 'ㄎㄞ', '心': 'ㄒㄧㄣ', '生': 'ㄕㄥ', '氣': 'ㄑㄧˋ',
+            '老': 'ㄌㄠˇ', '師': 'ㄕ', '幫': 'ㄅㄤ', '忙': 'ㄇㄤˊ',
+            '謝': 'ㄒㄧㄝˋ', '不': 'ㄅㄨˊ', '客': 'ㄎㄜˋ', '玩': 'ㄨㄢˊ',
+            '去': 'ㄑㄩˋ', '2': 'ㄦˋ', '二': 'ㄦˋ', '樓': 'ㄌㄡˊ',
+            '爬': 'ㄆㄚˊ', '梯': 'ㄊㄧ', '家': 'ㄐㄧㄚ',
+            '跌': 'ㄉㄧㄝˊ', '倒': 'ㄉㄠˇ', '了': '˙ㄌㄜ',
+            '流': 'ㄌㄧㄡˊ', '血': 'ㄒㄧㄝˇ',
+            '有': 'ㄧㄡˇ', '人': 'ㄖㄣˊ', '打': 'ㄉㄚˇ',
+            '東': 'ㄉㄨㄥ', '西': 'ㄒㄧ', '壞': 'ㄏㄨㄞˋ',
+            '找': 'ㄓㄠˇ', '到': 'ㄉㄠˋ',
+            '警': 'ㄐㄧㄥˇ', '報': 'ㄅㄠˋ', '響': 'ㄒㄧㄤˇ',
+            '地': 'ㄉㄧˋ', '板': 'ㄅㄢˇ', '溼': 'ㄕ',
+            '很': 'ㄏㄣˇ', '危': 'ㄨㄟ', '險': 'ㄒㄧㄢˇ',
+            '救': 'ㄐㄧㄡˋ', '命': 'ㄇㄧㄥˋ',
+            '見': 'ㄐㄧㄢˋ',
+            '也': 'ㄧㄝˇ',
+            '帶': 'ㄉㄞˋ', '聯': 'ㄌㄧㄢˊ', '絡': 'ㄌㄨㄛˋ', '簿': 'ㄅㄨˋ',
+            '鉛': 'ㄑㄧㄢ', '筆': 'ㄅㄧˇ', '盒': 'ㄏㄜˊ', '收': 'ㄕㄡ', 
+            '書': 'ㄕㄨ', '包': 'ㄅㄠ',
+            '受': 'ㄕㄡˋ', '傷': 'ㄕㄤ', '肚': 'ㄉㄨˋ', '子': '˙ㄗ',
+            '點': 'ㄉㄧㄢˇ', '掉': 'ㄉㄧㄠˋ',
+            '操': 'ㄘㄠ', '場': 'ㄔㄤˇ',
+            '常': 'ㄔㄤˊ', '用': 'ㄩㄥˋ',
+            '橡': 'ㄒㄧㄤˋ', '皮': 'ㄆㄧˊ', '擦': 'ㄘㄚ'
+        };
+
+        const getZhuyin = (char) => zhuyinMap[char] || '';
+
+        // 分類定義 (移除 'safety'，保留 5 大類，名稱精簡為兩字)
+        const CATEGORIES = [
+            { id: 'favorite', name: '常用', icon: 'fa-star', color: 'bg-yellow-100 text-yellow-600' },
+            { id: 'daily', name: '日常', icon: 'fa-school', color: 'bg-blue-100 text-blue-600' },
+            { id: 'needs', name: '生理', icon: 'fa-glass-water', color: 'bg-green-100 text-green-600' },
+            { id: 'emotion', name: '情緒', icon: 'fa-face-smile', color: 'bg-yellow-100 text-yellow-600' },
+            { id: 'social', name: '社交', icon: 'fa-users', color: 'bg-purple-100 text-purple-600' },
+            { id: 'learning', name: '學習', icon: 'fa-book', color: 'bg-indigo-100 text-indigo-600' },
+        ];
+
+        // AI 圖片生成 URL 輔助函式
+        const getAIImage = (action, seed) => {
+            const character = "Cute Asian boy, primary school student, short black hair, wearing a white t-shirt with blue horizontal stripes, blue pants";
+            const style = "simple vector art, flat color, thick lines, pastel tones, cartoon style, white background, minimalist, high quality, sticker style";
+            const prompt = `${character}, ${action}, ${style}`;
+            return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=300&height=300&nologo=true&seed=${seed}`;
+        };
+
+        // --- 預設資料 (DEFAULT_CARD_DATA) ---
+        const DEFAULT_CARD_DATA = [
+            // --- 1. 生理需求 (Needs) ---
+            { id: 'n1', category: 'needs', text: '我要喝水', zhuyin: ['ㄨㄛˇ','ㄧㄠˋ','ㄏㄜ','ㄕㄨㄟˇ'], img: getAIImage('drinking water from a water bottle', 101) },
+            { id: 'n2', category: 'needs', text: '我要尿尿', zhuyin: ['ㄨㄛˇ','ㄧㄠˋ','ㄋㄧㄠˋ','ㄋㄧㄠˋ'], img: getAIImage('standing in front of a urinal bathroom', 102) },
+            { id: 'n3', category: 'needs', text: '我要大便', zhuyin: ['ㄨㄛˇ','ㄧㄠˋ','ㄉㄚˋ','ㄅㄧㄢˋ'], img: getAIImage('sitting on a toilet looking relieved', 103) },
+            { id: 'n4', category: 'needs', text: '肚子餓', zhuyin: ['ㄉㄨˋ','˙ㄗ','ㄜˋ'], img: getAIImage('rubbing stomach looking hungry thought bubble with food', 104) },
+            { id: 'n5', category: 'needs', text: '我不舒服', zhuyin: ['ㄨㄛˇ','ㄅㄨˋ','ㄕㄨ','ㄈㄨˊ'], img: getAIImage('sick boy coughing, holding chest with one hand, sad expression, upper body close up, simple pose, clear arms, vector art, cartoon style', 1055) },
+            { id: 'n6', category: 'needs', text: '我好熱', zhuyin: ['ㄨㄛˇ','ㄏㄠˇ','ㄖㄜˋ'], img: getAIImage('boy wearing t-shirt holding a hand fan and fanning himself, sweating, red flushed face, hot summer sun, no jacket, simple vector art', 1063) },
+            { id: 'n7', category: 'needs', text: '我好冷', zhuyin: ['ㄨㄛˇ','ㄏㄠˇ','ㄌㄥˇ'], img: getAIImage('shivering wearing a thick jacket snowflake', 107) },
+            { id: 'n8', category: 'needs', text: '耳朵痛', zhuyin: ['ㄦˇ','˙ㄉㄨㄛ','ㄊㄨㄥˋ'], img: getAIImage('boy pointing at ear with grimace of pain, simple pose', 1082) },
+            { id: 'n9', category: 'needs', text: '我要休息', zhuyin: ['ㄨㄛˇ','ㄧㄠˋ','ㄒㄧㄡ','ㄒㄧˊ'], img: getAIImage('sleeping on a pillow zzz symbol', 109) },
+            { id: 'n10', category: 'needs', text: '我要擦汗', zhuyin: ['ㄨㄛˇ','ㄧㄠˋ','ㄘㄚ','ㄏㄢˋ'], img: getAIImage('wiping sweat with a towel', 110) },
+            { id: 'sa1', category: 'needs', text: '我跌倒了', zhuyin: ['ㄨㄛˇ','ㄉㄧㄝˊ','ㄉㄠˇ','˙ㄌㄜ'], img: getAIImage('boy falling on floor, holding knee, painful expression, crying, hurt face, tears, simple vector art', 5012) },
+            { id: 'n11', category: 'needs', text: '我受傷了', zhuyin: ['ㄨㄛˇ','ㄕㄡˋ','ㄕㄤ','˙ㄌㄜ'], img: getAIImage('boy with a bandage on arm, looking sad, pointing at wound, injury, pain, medical, simple vector art', 5013) },
+            { id: 'n12', category: 'needs', text: '我肚子痛', zhuyin: ['ㄨㄛˇ','ㄉㄨˋ','˙ㄗ','ㄊㄨㄥˋ'], img: getAIImage('boy holding stomach with both hands, grimacing in pain, stomach ache, tummy hurts, bent over slightly, simple vector art', 5014) },
+
+            // --- 2. 情緒表達 (Emotion) ---
+            { id: 'e1', category: 'emotion', text: '我很開心', zhuyin: ['ㄨㄛˇ','ㄏㄣˇ','ㄎㄞ','ㄒㄧㄣ'], img: getAIImage('big smile happy jumping confetti', 201) },
+            { id: 'e2', category: 'emotion', text: '我很生氣', zhuyin: ['ㄨㄛˇ','ㄏㄣˇ','ㄕㄥ','ㄑㄧˋ'], img: getAIImage('angry face steam coming out of ears red face', 202) },
+            { id: 'e3', category: 'emotion', text: '我好難過', zhuyin: ['ㄨㄛˇ','ㄏㄠˇ','ㄋㄢˊ','ㄍㄨㄛˋ'], img: getAIImage('crying tears sadness blue background', 203) },
+            { id: 'e4', category: 'emotion', text: '我怕怕', zhuyin: ['ㄨㄛˇ','ㄆㄚˋ','ㄆㄚˋ'], img: getAIImage('scared boy hiding behind hands, trembling, simple vector', 2042) },
+            { id: 'e5', category: 'emotion', text: '我很緊張', zhuyin: ['ㄨㄛˇ','ㄏㄣˇ','ㄐㄧㄣˇ','ㄓㄤ'], img: getAIImage('nervous biting fingernails sweating', 205) },
+            { id: 'e6', category: 'emotion', text: '我不喜歡', zhuyin: ['ㄨㄛˇ','ㄅㄨˋ','ㄒㄧˇ','ㄏㄨㄢ'], img: getAIImage('boy frowning, turning head away, pushing away with hands, rejecting, disgusted face, looking displeased, simple vector art', 2062) },
+            { id: 'e7', category: 'emotion', text: '我想哭', zhuyin: ['ㄨㄛˇ','ㄒㄧㄤˇ','ㄎㄨ'], img: getAIImage('about to cry sad eyes', 207) },
+            { id: 'e8', category: 'emotion', text: '覺得好吵', zhuyin: ['ㄐㄩㄝˊ','˙ㄉㄜ','ㄏㄠˇ','ㄔㄠˇ'], img: getAIImage('boy covering both ears with hands, eyes closed, loud noise symbol', 2082) },
+            { id: 'e9', category: 'emotion', text: '想要安靜', zhuyin: ['ㄒㄧㄤˇ','ㄧㄠˋ','ㄢ','ㄐㄧㄥˋ'], img: getAIImage('finger on lips shhh gesture quiet', 209) },
+            { id: 'e10', category: 'emotion', text: '想要抱抱', zhuyin: ['ㄒㄧㄤˇ','ㄧㄠˋ','ㄅㄠˋ','ㄅㄠˋ'], img: getAIImage('arms open wide wanting a hug', 210) },
+
+            // --- 3. 社交互動 (Social) ---
+            { id: 's1', category: 'social', text: '你好', zhuyin: ['ㄋㄧˇ','ㄏㄠˇ'], img: getAIImage('waving hand saying hello friendly', 301) },
+            { id: 's2', category: 'social', text: '謝謝', zhuyin: ['ㄒㄧㄝˋ','˙ㄒㄧㄝ'], img: getAIImage('bowing slightly hands clasped thank you', 302) },
+            { id: 's3', category: 'social', text: '對不起', zhuyin: ['ㄉㄨㄟˋ','ㄅㄨˋ','ㄑㄧˇ'], img: getAIImage('looking down sorry apologetic', 303) },
+            { id: 's4', category: 'social', text: '請幫我', zhuyin: ['ㄑㄧㄥˇ','ㄅㄤ','ㄨㄛˇ'], img: getAIImage('raising hand asking for help', 304) },
+            { id: 's5', category: 'social', text: '再見', zhuyin: ['ㄗㄞˋ','ㄐㄧㄢˋ'], img: getAIImage('walking away waving goodbye', 305) },
+            { id: 's6', category: 'social', text: '借我玩', zhuyin: ['ㄐㄧㄝˋ','ㄨㄛˇ','ㄨㄢˊ'], img: getAIImage('reaching out hand asking for a toy', 306) },
+            { id: 's7', category: 'social', text: '輪流玩', zhuyin: ['ㄌㄨㄣˊ','ㄌㄧㄡˊ','ㄨㄢˊ'], img: getAIImage('two kids playing turn taking', 307) },
+            { id: 's8', category: 'social', text: '我也要', zhuyin: ['ㄨㄛˇ','ㄧㄝˇ','ㄧㄠˋ'], img: getAIImage('boy raising hand eagerly asking to join, pointing at self, me too, happy, group of friends nearby, simple vector art', 3083) },
+            { id: 's9', category: 'social', text: '等一下', zhuyin: ['ㄉㄥˇ','ㄧˊ','ㄒㄧㄚˋ'], img: getAIImage('holding up hand stop wait gesture', 309) },
+            { id: 's10', category: 'social', text: '不可以', zhuyin: ['ㄅㄨˋ','ㄎㄜˇ','ㄧˇ'], img: getAIImage('boy crossing arms over chest in an X shape, shaking head no, frowning, angry face, serious expression, rejecting, forbidden gesture, simple vector art', 3108) },
+            { id: 'sa3', category: 'social', text: '有人打我', zhuyin: ['ㄧㄡˇ','ㄖㄣˊ','ㄉㄚˇ','ㄨㄛˇ'], img: getAIImage('sad boy rubbing his arm in pain, crying face, simple style', 5032) },
+            { id: 's11', category: 'social', text: '老師好', zhuyin: ['ㄌㄠˇ','ㄕ','ㄏㄠˇ'], img: getAIImage('student bowing politely to a teacher, saying hello, respect, school hallway scene, simple vector art', 311) },
+            { id: 's12', category: 'social', text: '老師再見', zhuyin: ['ㄌㄠˇ','ㄕ','ㄗㄞˋ','ㄐㄧㄢˋ'], img: getAIImage('student waving goodbye to teacher, walking away home, school gate, polite, simple vector art', 312) },
+
+            // --- 4. 學習情境 (Learning) ---
+            { id: 'l1', category: 'learning', text: '上課了', zhuyin: ['ㄕㄤˋ','ㄎㄜˋ','˙ㄌㄜ'], img: getAIImage('sitting at school desk with book open', 401) },
+            { id: 'l2', category: 'learning', text: '拿鉛筆', zhuyin: ['ㄋㄚˊ','ㄑㄧㄢ','ㄅㄧˇ'], img: getAIImage('holding a pencil writing', 402) },
+            { id: 'l3', category: 'learning', text: '拿課本', zhuyin: ['ㄋㄚˊ','ㄎㄜˋ','ㄅㄣˇ'], img: getAIImage('holding a textbook reading', 403) },
+            { id: 'l4', category: 'learning', text: '寫完了', zhuyin: ['ㄒㄧㄝˇ','ㄨㄢˊ','˙ㄌㄜ'], img: getAIImage('showing paper with check mark done', 404) },
+            { id: 'l5', category: 'learning', text: '我不會', zhuyin: ['ㄨㄛˇ','ㄅㄨˊ','ㄏㄨㄟˋ'], img: getAIImage('looking confused question marks', 405) },
+            { id: 'l6', category: 'learning', text: '再說一次', zhuyin: ['ㄗㄞˋ','ㄕㄨㄛ','ㄧˊ','ㄘˋ'], img: getAIImage('cupping ear listening attentively', 406) },
+            { id: 'l7', category: 'learning', text: '我要膠水', zhuyin: ['ㄨㄛˇ','ㄧㄠˋ','ㄐㄧㄠ','ㄕㄨㄟˇ'], img: getAIImage('holding glue stick pasting paper', 407) },
+            
+            // [修正] 我要橡皮擦：更新 Seed 修復破圖，強調手拿大塊橡皮擦
+            { id: 'l8', category: 'learning', text: '我要橡皮擦', zhuyin: ['ㄨㄛˇ','ㄧㄠˋ','ㄒㄧㄤˋ','ㄆㄧˊ','ㄘㄚ'], img: getAIImage('close up hand holding a big white eraser erasing pencil writing on paper, no pencil visible, school desk, simple vector art, cartoon style', 4087) },
+            
+            { id: 'l9', category: 'learning', text: '交作業', zhuyin: ['ㄐㄧㄠ','ㄗㄨㄛˋ','ㄧㄝˋ'], img: getAIImage('student handing a paper document to a teacher, holding with both hands', 4092) },
+            { id: 'l10', category: 'learning', text: '收書包', zhuyin: ['ㄕㄡ','ㄕㄨ','ㄅㄠ'], img: getAIImage('boy standing at desk, putting notebooks and stationery into an open backpack which is sitting on the desk, student is not wearing a backpack, packing up, classroom scene, simple vector art', 4105) },
+            { id: 'l11', category: 'learning', text: '去2樓上課', zhuyin: ['ㄑㄩˋ','ㄦˋ','ㄌㄡˊ','ㄕㄤˋ','ㄎㄜˋ'], img: getAIImage('boy student climbing stairs in school building, holding handrail, walking up steps, backpack, side view, simple vector art', 411) },
+            { id: 'sa5', category: 'learning', text: '找不到', zhuyin: ['ㄓㄠˇ','ㄅㄨˊ','ㄉㄠˋ'], img: getAIImage('boy looking inside an open empty backpack, searching for something, confused expression, question mark, school classroom, simple vector art', 5052) },
+            { id: 'l12', category: 'learning', text: '帶聯絡簿鉛筆盒', zhuyin: ['ㄉㄞˋ','ㄌㄧㄢˊ','ㄌㄨㄛˋ','ㄅㄨˋ','ㄑㄧㄢ','ㄅㄧˇ','ㄏㄜˊ'], img: getAIImage('boy holding a yellow A4 contact book and a pencil case, showing items, school supplies, check list, simple vector art', 412) },
+
+            // --- 6. 校園日常 (Daily) ---
+            { id: 'd1', category: 'daily', text: '吃點心', zhuyin: ['ㄔ','ㄉㄧㄢˇ','ㄒㄧㄣ'], img: getAIImage('boy eating snacks cookies and juice, happy, break time, school desk, simple vector art', 6012) },
+            { id: 'd2', category: 'daily', text: '去排隊', zhuyin: ['ㄑㄩˋ','ㄆㄞˊ','ㄉㄨㄟˋ'], img: getAIImage('three students standing in a single file line, queue, side view', 6022) },
+            { id: 'd3', category: 'daily', text: '去洗手', zhuyin: ['ㄑㄩˋ','ㄒㄧˇ','ㄕㄡˇ'], img: getAIImage('washing hands with soap at sink', 603) },
+            { id: 'd4', category: 'daily', text: '睡午覺', zhuyin: ['ㄕㄨㄟˋ','ㄨˇ','ㄐㄧㄠˋ'], img: getAIImage('sleeping head on desk classroom', 604) },
+            { id: 'd5', category: 'daily', text: '去圖書館', zhuyin: ['ㄑㄩˋ','ㄊㄨˊ','ㄕㄨ','ㄍㄨㄢˇ'], img: getAIImage('bookshelf library reading', 605) },
+            { id: 'd6', category: 'daily', text: '去操場', zhuyin: ['ㄑㄩˋ','ㄘㄠ','ㄔㄤˇ'], img: getAIImage('boy running happily on a school playground track, sunny day, outdoor physical education, simple vector art', 6067) },
+            { id: 'd7', category: 'daily', text: '倒垃圾', zhuyin: ['ㄉㄠˋ','ㄌㄜˋ','ㄙㄜˋ'], img: getAIImage('boy holding a trash bag with both hands in front of body, standing pose, taking out trash, recycling bin nearby, simple vector art', 6075) },
+            { id: 'd8', category: 'daily', text: '擦桌子', zhuyin: ['ㄘㄚ','ㄓㄨㄛ','˙ㄗ'], img: getAIImage('wiping desk with cloth cleaning', 608) },
+            { id: 'd9', category: 'daily', text: '去保健室', zhuyin: ['ㄑㄩˋ','ㄅㄠˇ','ㄐㄧㄢˋ','ㄕˋ'], img: getAIImage('nurse applying medicine ointment to a small wound on boy\'s knee, sitting on a chair, first aid, caring, clinic scene', 6093) },
+            { id: 'd10', category: 'daily', text: '放學了', zhuyin: ['ㄈㄤˋ','ㄒㄩㄝˊ','˙ㄌㄜ'], img: getAIImage('cute boy with backpack holding parent hand walking out school gate happy sunset vector art', 6105) },
+            { id: 'sa4', category: 'daily', text: '東西壞了', zhuyin: ['ㄉㄨㄥ','ㄒㄧ','ㄏㄨㄞˋ','˙ㄌㄜ'], img: getAIImage('holding broken toy sad', 504) },
+            { id: 'sa6', category: 'daily', text: '警報響了', zhuyin: ['ㄐㄧㄥˇ','ㄅㄠˋ','ㄒㄧㄤˇ','˙ㄌㄜ'], img: getAIImage('boy hiding under school desk, holding table legs, earthquake drill, safety, sheltering, classroom floor, simple vector art', 5062) },
+            { id: 'sa7', category: 'daily', text: '地板溼溼', zhuyin: ['ㄉㄧˋ','ㄅㄢˇ','ㄕ','ㄕ'], img: getAIImage('wet floor puddle slip caution sign', 5072) },
+            { id: 'sa8', category: 'daily', text: '很危險', zhuyin: ['ㄏㄣˇ','ㄨㄟ','ㄒㄧㄢˇ'], img: getAIImage('scared boy looking nervous and afraid, danger sign, explosion with fire and sparks in background, warning, safety, simple vector art', 5083) },
+        ];
+
+
+        // ==========================================
+        // 2. React 元件 (COMPONENTS)
+        // ==========================================
+
+        const { useState, useEffect, useRef } = React;
+
+        // --- 注音字元元件 ---
+        const ZhuyinChar = ({ char, zhuyinCode }) => {
+            const toneRegex = /[\u02CA\u02C7\u02CB\u02D9]/; 
+            const bopomofoRegex = /[\u3105-\u3129]/g;
+
+            const toneMatch = zhuyinCode.match(toneRegex);
+            const tone = toneMatch ? toneMatch[0] : '';
+            const bopomofo = zhuyinCode.match(bopomofoRegex) || [];
+            const isLightTone = tone === '˙';
+            const isSideTone = tone && !isLightTone;
+
+            return (
+                <div className="flex items-center gap-1 mx-0.5 pointer-events-none">
+                    <div className="text-3xl md:text-4xl font-bold text-gray-800 font-[Noto Sans TC]">
+                        {char}
+                    </div>
+                    <div className="relative flex flex-col justify-center items-center h-full px-1">
+                        {isLightTone && (
+                            <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 text-xs font-bold text-gray-600 font-[Bopomofo]">
+                                {tone}
+                            </div>
+                        )}
+                        <div className="flex flex-col items-center leading-none">
+                            {bopomofo.map((symbol, idx) => (
+                                <span key={idx} className="text-xs font-[Bopomofo] text-gray-600 font-medium my-[1px]">
+                                    {symbol}
+                                </span>
+                            ))}
+                        </div>
+                        {isSideTone && (
+                            <div className="absolute right-[-8px] top-1/2 transform -translate-y-1/2 text-xs font-bold text-gray-600 font-[Bopomofo]">
+                                {tone}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // --- 單張圖卡元件 (更新：支援排序與常用設定) ---
+        const Card = ({ data, onClick, isMini = false, isReordering = false, onReorder, onToggleFavorite }) => {
+            return (
+                <div 
+                    onClick={() => !isReordering && onClick(data)}
+                    className={`
+                        bg-white rounded-[24px] card-shadow border border-gray-100 cursor-pointer relative overflow-hidden group
+                        ${isMini 
+                            ? 'h-64 p-3 hover:bg-red-50 hover:border-red-200 flex flex-col' 
+                            : `h-48 md:h-56 p-4 flex items-center ${isReordering ? 'border-orange-300 ring-2 ring-orange-100' : 'hover:border-blue-300'}`
+                        }
+                    `}
+                >
+                    {/* 圖片區 */}
+                    <div className={`
+                        ${isMini 
+                            ? 'w-full h-[65%] mb-2' 
+                            : 'w-[45%] h-full'
+                        } 
+                        flex items-center justify-center p-1 relative
+                    `}>
+                         <img 
+                            src={data.img} 
+                            alt={data.text} 
+                            loading="lazy"
+                            className="max-h-full max-w-full object-contain rounded-xl shadow-sm z-10 pointer-events-none"
+                            onError={(e) => {
+                                e.target.onerror = null; 
+                                e.target.src = `https://placehold.co/300x300/e2e8f0/475569?text=${encodeURIComponent(data.text)}`;
+                            }}
+                        />
+                        {/* 常用標示 (如果不是 Reordering 模式且已加入常用，顯示一個小星星) */}
+                        {!isReordering && !isMini && data.isFavorite && (
+                            <div className="absolute top-0 left-0 text-yellow-400 drop-shadow-md z-20">
+                                <i className="fa-solid fa-star fa-lg"></i>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* 文字區 */}
+                    <div className={`
+                        ${isMini 
+                            ? 'w-full h-[35%] bg-blue-50/50 rounded-xl' 
+                            : 'w-[55%] h-full pl-2 bg-blue-50/30 rounded-r-2xl'
+                        } 
+                        flex flex-wrap content-center justify-center
+                    `}>
+                        {isMini ? (
+                            <div className="flex justify-center scale-75 transform origin-center">
+                                {data.text.split('').map((char, index) => (
+                                    <ZhuyinChar 
+                                        key={index} 
+                                        char={char} 
+                                        zhuyinCode={data.zhuyin[index] || getZhuyin(char)} 
+                                    />
+                                ))}
+                            </div>
+                        ) : (
+                            data.text.split('').map((char, index) => (
+                                <ZhuyinChar 
+                                    key={index} 
+                                    char={char} 
+                                    zhuyinCode={data.zhuyin[index] || getZhuyin(char)} 
+                                />
+                            ))
+                        )}
+                    </div>
+
+                    {/* 排序模式遮罩與按鈕 */}
+                    {isReordering && !isMini && (
+                        <div className="absolute inset-0 bg-white/90 z-20 flex items-center justify-center gap-3 animate-fade-in">
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); onReorder(data.id, -1); }}
+                                className="w-10 h-10 rounded-full bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white shadow-md flex items-center justify-center transition"
+                                title="前移"
+                            >
+                                <i className="fa-solid fa-arrow-up"></i>
+                            </button>
+                            
+                            {/* 加入/移除常用按鈕 */}
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); onToggleFavorite(data.id); }}
+                                className={`w-12 h-12 rounded-full shadow-md flex items-center justify-center transition border-2 ${data.isFavorite ? 'bg-yellow-100 border-yellow-400 text-yellow-500' : 'bg-white border-gray-200 text-gray-300 hover:text-yellow-400 hover:border-yellow-400'}`}
+                                title={data.isFavorite ? "移除常用" : "加入常用"}
+                            >
+                                <i className={`fa-solid fa-star text-2xl`}></i>
+                            </button>
+
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); onReorder(data.id, 1); }}
+                                className="w-10 h-10 rounded-full bg-gray-100 text-gray-600 hover:bg-orange-500 hover:text-white shadow-md flex items-center justify-center transition"
+                                title="後移"
+                            >
+                                <i className="fa-solid fa-arrow-down"></i>
+                            </button>
+                        </div>
+                    )}
+
+                    {/* 迷你模式的刪除提示 */}
+                    {isMini && (
+                        <div className="absolute top-1 right-1 text-red-400 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                            <i className="fa-solid fa-circle-xmark fa-lg"></i>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // --- 側邊句子區 (Sidebar) ---
+        const SentenceSidebar = ({ isOpen, onClose, sentence, onRemove, onMove, onClear, onSpeak }) => {
+            return (
+                <>
+                    {isOpen && (
+                        <div 
+                            className="fixed inset-0 bg-black bg-opacity-30 z-40 transition-opacity"
+                            onClick={onClose}
+                        ></div>
+                    )}
+                    <div className={`
+                        fixed top-0 right-0 h-full w-full md:w-96 bg-white z-50 shadow-2xl
+                        transform transition-transform duration-300 ease-in-out
+                        ${isOpen ? 'translate-x-0' : 'translate-x-full'}
+                        flex flex-col
+                    `}>
+                        <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-blue-50">
+                            <h3 className="text-xl font-bold text-gray-800 flex items-center">
+                                <i className="fa-solid fa-pen-nib mr-2 text-blue-500"></i>
+                                我的句子 ({sentence.length})
+                            </h3>
+                            <button onClick={onClose} className="w-10 h-10 rounded-full bg-white text-gray-500 hover:text-red-500 flex items-center justify-center shadow-sm transition">
+                                <i className="fa-solid fa-xmark text-xl"></i>
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4 bg-gray-50 space-y-4">
+                            {sentence.length === 0 ? (
+                                <div className="h-full flex flex-col items-center justify-center text-gray-400 text-center">
+                                    <i className="fa-regular fa-message text-6xl mb-4 opacity-30"></i>
+                                    <p className="text-lg">點擊左側圖卡<br/>開始造句</p>
+                                </div>
+                            ) : (
+                                sentence.map((card, idx) => (
+                                    <div key={`${card.id}-${idx}`} className="pop-in flex items-center gap-2">
+                                        <div className="flex-1">
+                                            <Card data={card} onClick={() => onRemove(idx)} isMini={true} />
+                                        </div>
+                                        <div className="flex flex-col gap-2">
+                                            <button onClick={() => onMove(idx, -1)} disabled={idx === 0} className="w-8 h-8 rounded-full bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-500 disabled:opacity-30 transition flex items-center justify-center">
+                                                <i className="fa-solid fa-arrow-up"></i>
+                                            </button>
+                                            <button onClick={() => onMove(idx, 1)} disabled={idx === sentence.length - 1} className="w-8 h-8 rounded-full bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-500 disabled:opacity-30 transition flex items-center justify-center">
+                                                <i className="fa-solid fa-arrow-down"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                        <div className="p-4 border-t border-gray-200 bg-white grid grid-cols-2 gap-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+                            <button onClick={onClear} disabled={sentence.length === 0} className="py-3 rounded-xl bg-gray-100 text-gray-600 font-bold hover:bg-gray-200 disabled:opacity-50 transition">
+                                <i className="fa-solid fa-trash-can mr-2"></i> 清除
+                            </button>
+                            <button onClick={onSpeak} disabled={sentence.length === 0} className="py-3 rounded-xl bg-blue-500 text-white font-bold hover:bg-blue-600 shadow-lg shadow-blue-200 disabled:opacity-50 transition flex items-center justify-center">
+                                <i className="fa-solid fa-volume-high mr-2"></i> 朗讀整句
+                            </button>
+                        </div>
+                    </div>
+                </>
+            );
+        };
+
+        // --- 開發者工具 ---
+        const JsonGeneratorPanel = ({ activeCategory }) => {
+            const [inputText, setInputText] = useState("");
+            const [generatedJson, setGeneratedJson] = useState("");
+
+            const handleGenerate = () => {
+                if (!inputText.trim()) return;
+                const zhuyinArray = inputText.split('').map(char => getZhuyin(char));
+                const seed = Math.floor(Math.random() * 9000) + 1000;
+                let action = "doing related action";
+                if (inputText.includes("樓")) action = "climbing stairs";
+                const aiUrl = getAIImage(`cute asian boy ${action} related to ${inputText}`, seed);
+                const newCard = { id: `new_${Date.now()}`, category: activeCategory, text: inputText, zhuyin: zhuyinArray, img: aiUrl };
+                setGeneratedJson(JSON.stringify(newCard, null, 4) + ",");
+            };
+
+            return (
+                <div className="bg-gray-800 rounded-2xl p-6 mb-6 text-white border-l-4 border-yellow-400">
+                    <h3 className="text-lg font-bold text-yellow-400 mb-4 flex items-center"><i className="fa-solid fa-code mr-2"></i> 開發者工具：圖卡 JSON 生成器</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm text-gray-400 mb-1">輸入文字</label>
+                            <div className="flex gap-2">
+                                <input type="text" value={inputText} onChange={(e) => setInputText(e.target.value)} className="flex-1 p-2 rounded bg-gray-700 border border-gray-600 text-white focus:border-yellow-400 outline-none" placeholder="例如：我想回家" />
+                                <button onClick={handleGenerate} className="bg-yellow-500 text-black px-4 py-2 rounded font-bold hover:bg-yellow-400">生成</button>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-2">說明：產生後請手動貼入程式碼的 CARD_DATA 中。</p>
+                        </div>
+                        <div className="relative">
+                            <label className="block text-sm text-gray-400 mb-1">JSON 結果 (請複製)</label>
+                            <textarea readOnly value={generatedJson} className="w-full h-32 p-2 rounded bg-gray-900 font-mono text-xs text-green-400 border border-gray-700" onClick={(e) => e.target.select()}></textarea>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // 3. 主程式 APP
+        // ==========================================
+
+        const App = () => {
+            // 1. 初始化卡片資料 (優先從 LocalStorage 讀取)
+            const [allCards, setAllCards] = useState(() => {
+                const saved = localStorage.getItem('aac_cards_v1');
+                return saved ? JSON.parse(saved) : DEFAULT_CARD_DATA;
+            });
+
+            const [activeCategory, setActiveCategory] = useState('daily');
+            const [sentence, setSentence] = useState([]);
+            const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+            const [speechRate, setSpeechRate] = useState(1.0);
+            const [isReordering, setIsReordering] = useState(false);
+
+            // 監聽 allCards 變動並存回 LocalStorage
+            useEffect(() => {
+                localStorage.setItem('aac_cards_v1', JSON.stringify(allCards));
+            }, [allCards]);
+
+            // TTS
+            const speak = (text) => {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'zh-TW';
+                utterance.rate = speechRate;
+                const voices = window.speechSynthesis.getVoices();
+                const twVoice = voices.find(v => v.lang.includes('zh-TW') || v.lang.includes('zh_TW'));
+                if (twVoice) utterance.voice = twVoice;
+                window.speechSynthesis.speak(utterance);
+            };
+
+            const handleAddToSentence = (cardData) => {
+                setSentence(prev => [...prev, cardData]);
+                speak(cardData.text);
+                setIsSidebarOpen(true);
+            };
+
+            const handleRemoveFromSentence = (indexToRemove) => {
+                setSentence(prev => prev.filter((_, idx) => idx !== indexToRemove));
+            };
+
+            const handleMoveCardInSentence = (index, direction) => {
+                setSentence(prev => {
+                    const newSentence = [...prev];
+                    const targetIndex = index + direction;
+                    if (targetIndex < 0 || targetIndex >= newSentence.length) return prev;
+                    [newSentence[index], newSentence[targetIndex]] = [newSentence[targetIndex], newSentence[index]];
+                    return newSentence;
+                });
+            };
+
+            const handleSpeakSentence = () => {
+                if (sentence.length === 0) return;
+                const fullText = sentence.map(c => c.text).join('，');
+                speak(fullText);
+            };
+
+            // --- 排序 & 常用 功能 ---
+            const handleReorderCard = (cardId, direction) => {
+                // 邏輯: 找到目前顯示的卡片列表，交換位置
+                let currentList = [];
+                if (activeCategory === 'favorite') {
+                    currentList = allCards.filter(c => c.isFavorite);
+                } else {
+                    currentList = allCards.filter(c => c.category === activeCategory);
+                }
+
+                const currentIndex = currentList.findIndex(c => c.id === cardId);
+                const targetIndex = currentIndex + direction;
+
+                if (targetIndex < 0 || targetIndex >= currentList.length) return;
+
+                const cardA = currentList[currentIndex];
+                const cardB = currentList[targetIndex];
+                
+                const indexA = allCards.findIndex(c => c.id === cardA.id);
+                const indexB = allCards.findIndex(c => c.id === cardB.id);
+
+                const newAllCards = [...allCards];
+                [newAllCards[indexA], newAllCards[indexB]] = [newAllCards[indexB], newAllCards[indexA]];
+                setAllCards(newAllCards);
+            };
+
+            const handleToggleFavorite = (cardId) => {
+                setAllCards(prev => prev.map(card => {
+                    if (card.id === cardId) {
+                        return { ...card, isFavorite: !card.isFavorite };
+                    }
+                    return card;
+                }));
+            };
+
+            // 篩選顯示的卡片
+            const filteredCards = activeCategory === 'favorite' 
+                ? allCards.filter(c => c.isFavorite) 
+                : allCards.filter(c => c.category === activeCategory);
+
+            return (
+                <div className={`min-h-screen pb-20 ${isReordering ? 'bg-orange-50' : ''}`}>
+                    {/* Header */}
+                    <header className="bg-white p-4 shadow-sm sticky top-0 z-30 flex justify-between items-center px-4 md:px-8 border-b border-gray-100">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-500">
+                                <i className="fa-solid fa-child-reaching text-xl"></i>
+                            </div>
+                            <h1 className="text-xl md:text-2xl font-bold text-gray-800 tracking-wide">
+                                溝通板
+                            </h1>
+                        </div>
+                        
+                        <div className="flex items-center gap-4">
+                            <div className="hidden md:flex items-center gap-2 bg-gray-100 rounded-full px-3 py-1">
+                                <i className="fa-solid fa-gauge-high text-gray-400 text-sm"></i>
+                                <input type="range" min="0.5" max="1.5" step="0.1" value={speechRate} onChange={(e) => setSpeechRate(parseFloat(e.target.value))} className="w-20 accent-blue-500" />
+                            </div>
+
+                            {/* 調整排序按鈕 */}
+                            <button 
+                                onClick={() => setIsReordering(!isReordering)}
+                                className={`
+                                    px-4 py-2 rounded-xl font-bold transition flex items-center shadow-md
+                                    ${isReordering 
+                                        ? 'bg-orange-500 text-white shadow-orange-200' 
+                                        : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'}
+                                `}
+                            >
+                                <i className={`fa-solid ${isReordering ? 'fa-check' : 'fa-sort'} mr-2`}></i>
+                                {isReordering ? '完成調整' : '調整排序'}
+                            </button>
+
+                            {/* 查看句子按鈕 */}
+                            <button 
+                                onClick={() => setIsSidebarOpen(true)}
+                                className="relative bg-blue-500 text-white px-4 py-2 rounded-xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-600 transition flex items-center"
+                            >
+                                <i className="fa-solid fa-pen-nib mr-2"></i>
+                                查看句子
+                                {sentence.length > 0 && (
+                                    <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center border-2 border-white">
+                                        {sentence.length}
+                                    </span>
+                                )}
+                            </button>
+                        </div>
+                    </header>
+
+                    <main className="max-w-7xl mx-auto p-4 md:p-6">
+                        <SentenceSidebar 
+                            isOpen={isSidebarOpen}
+                            onClose={() => setIsSidebarOpen(false)}
+                            sentence={sentence}
+                            onRemove={handleRemoveFromSentence}
+                            onMove={handleMoveCardInSentence}
+                            onClear={() => setSentence([])}
+                            onSpeak={handleSpeakSentence}
+                        />
+
+                        {/* 分類導航 (桌面版置中，手機版靠左) */}
+                        <div className="flex justify-start md:justify-center mb-6">
+                            <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-2 max-w-full px-1">
+                                {CATEGORIES.map(cat => (
+                                    <button
+                                        key={cat.id}
+                                        onClick={() => setActiveCategory(cat.id)}
+                                        className={`
+                                            flex items-center gap-2 px-5 py-3 rounded-xl whitespace-nowrap transition-all duration-300 font-bold text-base md:text-lg flex-shrink-0
+                                            ${activeCategory === cat.id 
+                                                ? `${cat.color} shadow-lg shadow-gray-200 scale-105 ring-2 ring-offset-1 ring-white ring-opacity-60` 
+                                                : 'bg-white text-gray-400 hover:bg-gray-50 hover:text-gray-600'}
+                                        `}
+                                    >
+                                        <i className={`fa-solid ${cat.icon}`}></i>
+                                        {cat.name}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* 卡片網格 */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6 min-h-[50vh] mb-12">
+                            {filteredCards.map((card) => (
+                                <Card 
+                                    key={card.id} 
+                                    data={card} 
+                                    onClick={handleAddToSentence}
+                                    isReordering={isReordering}
+                                    onReorder={handleReorderCard}
+                                    onToggleFavorite={handleToggleFavorite}
+                                />
+                            ))}
+                            {filteredCards.length === 0 && (
+                                <div className="col-span-full text-center py-20 bg-white rounded-2xl border-2 border-dashed border-gray-200 text-gray-400">
+                                    <i className={`fa-solid ${activeCategory === 'favorite' ? 'fa-star' : 'fa-folder-open'} text-6xl mb-4 text-gray-300`}></i>
+                                    <p className="text-xl">
+                                        {activeCategory === 'favorite' 
+                                            ? '還沒有常用卡片，請到其他分類點擊「調整排序」加入！' 
+                                            : '此分類目前沒有卡片。'}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="mt-12 pt-8 border-t border-gray-200">
+                            <JsonGeneratorPanel activeCategory={activeCategory === 'favorite' ? 'daily' : activeCategory} />
+                        </div>
+
+                        {/* Footer */}
+                        <footer className="mt-12 text-center text-gray-400 text-sm pb-8">
+                            <p>Designed by Teacher Hsu.</p>
+                            <p>本工具採用 AI 繪圖與語音合成技術</p>
+                            <p>僅供特殊教育與溝通輔助使用，非醫療器材</p>
+                        </footer>
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
